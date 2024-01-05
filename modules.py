@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import random
 
 class MAB(nn.Module):
     def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=False):
@@ -31,6 +32,79 @@ class MAB(nn.Module):
         O = O + F.relu(self.fc_o(O))
         O = O if getattr(self, 'ln1', None) is None else self.ln1(O)
         return O
+
+class miniset_MAB(nn.Module):
+    """ input batch_size * set_size * dim, output batch_size * miniset * dim
+    """
+    def __init__(self, dim_Q, dim_K, dim_V, num_heads, miniset:int, minisettype='miniset_A1', ln=False, flash=False):
+        super(miniset_MAB, self).__init__()
+        self.minisettype = minisettype
+        self.mab1 = MAB(dim_Q, dim_K, dim_V, num_heads, ln=ln)
+        self.mab2 = MAB(dim_V, dim_V, dim_V, num_heads, ln=ln)
+        if self.minisettype=='miniset_A3':
+            self.mab3 = MAB(dim_V, dim_V, dim_V, num_heads, ln=ln)
+        self.miniset = miniset
+
+    def forward(self, X):
+        # import pdb; pdb.set_trace()
+        assert X.shape[1] % self.miniset == 0, "set size must be divided by mini set size!"
+        n_mini = X.shape[1] // self.miniset
+        inter_output_list = []
+
+        if self.minisettype=='miniset_A1':
+            for i in range(n_mini):
+                curr = X[:,i*self.miniset: (i+1)*self.miniset, :]
+                next = X[:,(i+1)%n_mini*self.miniset: (i+2)%n_mini*self.miniset, :]
+                inter_output_list.append(self.mab1(curr, next))
+            del curr
+
+            mid_output = []
+            for i in range(n_mini):
+                curr = inter_output_list[i]
+                for j in range(1,n_mini):
+                    next = inter_output_list[(j+i)%n_mini]
+                    curr = self.mab2(curr, next)
+                mid_output.append(curr)
+            del inter_output_list
+            random.shuffle(mid_output)
+            output = mid_output[0]
+            for i,mat in enumerate(mid_output[1:]):
+                output = self.mab2(output, mat)
+            del mid_output
+
+        elif self.minisettype=='miniset_A2':
+            for i in range(n_mini):
+                curr = X[:,i*self.miniset: (i+1)*self.miniset, :]
+                inter_output_list.append(self.mab1(curr, curr))
+            del curr
+
+            mid_output = []
+            for i in range(n_mini):
+                curr = inter_output_list[i]
+                for j in range(1,n_mini):
+                    next = inter_output_list[(j+i)%n_mini]
+                    curr = self.mab2(curr, next)
+                mid_output.append(curr)
+            del inter_output_list
+            random.shuffle(mid_output)
+            output = mid_output[0]
+            for i,mat in enumerate(mid_output[1:]):
+                output = self.mab2(output, mat)
+            del mid_output
+
+        else:
+            for i in range(X.shape[1] // self.miniset-1):
+                curr = X[:,i*self.miniset: (i+1)*self.miniset, :]
+                next = X[:,(i+1)*self.miniset: (i+2)*self.miniset, :]
+                inter_output_list.append(self.mab1(curr, next))
+            inter_output_list.append(self.mab1(next, X[:,:self.miniset, :]))
+            random.shuffle(inter_output_list)
+            output = inter_output_list[0]
+            for i,mat in enumerate(inter_output_list[1:]):
+                output = self.mab2(output, mat)
+
+        return output
+
 
 class SAB(nn.Module):
     def __init__(self, dim_in, dim_out, num_heads, ln=False):
