@@ -40,9 +40,10 @@ class miniset_MAB(nn.Module):
         super(miniset_MAB, self).__init__()
         self.minisettype = minisettype
         self.mab1 = MAB(dim_Q, dim_K, dim_V, num_heads, ln=ln)
-        self.mab2 = MAB(dim_V, dim_V, dim_V, num_heads, ln=ln)
-        if self.minisettype=='miniset_A3':
-            self.mab3 = MAB(dim_V, dim_V, dim_V, num_heads, ln=ln)
+        if self.minisettype == 'miniset_A4':
+            self.mab2 = MAB(dim_V, dim_Q, dim_V, num_heads, ln=ln)
+        else: 
+            self.mab2 = MAB(dim_V, dim_V, dim_V, num_heads, ln=ln)
         self.miniset = miniset
 
     def forward(self, X):
@@ -92,7 +93,8 @@ class miniset_MAB(nn.Module):
                 output = self.mab2(output, mat)
             del mid_output
 
-        else:
+        elif self.minisettype=='miniset_A3':
+            # import pdb; pdb.set_trace()
             for i in range(X.shape[1] // self.miniset-1):
                 curr = X[:,i*self.miniset: (i+1)*self.miniset, :]
                 next = X[:,(i+1)*self.miniset: (i+2)*self.miniset, :]
@@ -103,7 +105,18 @@ class miniset_MAB(nn.Module):
             for i,mat in enumerate(inter_output_list[1:]):
                 output = self.mab2(output, mat)
 
+        elif self.minisettype=='miniset_A4':
+            mini_list = [X[:, i*self.miniset: (i+1)*self.miniset, :] for i in range(n_mini)]
+            output = self.mab1(mini_list[0], mini_list[1])
+            for next in mini_list[1:]:
+                output = self.mab2(output, next)
+
+        else:
+            raise ValueError("model not implemented")
+            
         return output
+
+
 
 
 class SAB(nn.Module):
