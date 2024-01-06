@@ -114,22 +114,21 @@ for epoch in range(args.train_epochs):
         correct += (preds.argmax(dim=1) == lbls).sum().item()
 
     avg_loss, avg_acc = np.mean(losses), correct / total
-    wandb.log({"epoch": epoch, "train_loss": avg_loss, "train_acc": avg_acc})
     print(f"Epoch {epoch}: train loss {avg_loss:.3f} train acc {avg_acc:.3f}")
 
-    if epoch % 5 == 0:
-        model.eval()
-        losses, total, correct = [], 0, 0
-        for imgs, _, lbls in tqdm(generator.test_data(), desc= f"epoch{epoch}: evaluating..."):
-            imgs = torch.Tensor(imgs).cuda()
-            lbls = torch.Tensor(lbls).long().cuda()
-            # import pdb; pdb.set_trace()
-            preds = model(imgs)
-            loss = criterion(preds, lbls)
 
-            losses.append(loss.item())
-            total += lbls.shape[0]
-            correct += (preds.argmax(dim=1) == lbls).sum().item()
-        avg_loss, avg_acc = np.mean(losses), correct / total
-        wandb.log({"test_loss": avg_loss, "test_acc": avg_acc})
-        print(f"Epoch {epoch}: test loss {avg_loss:.3f} test acc {avg_acc:.3f}")
+    model.eval()
+    losses, total, correct = [], 0, 0
+    for imgs, _, lbls in tqdm(generator.test_data(), desc= f"epoch{epoch}: evaluating..."):
+        imgs = torch.Tensor(imgs).cuda()
+        lbls = torch.Tensor(lbls).long().cuda()
+        # import pdb; pdb.set_trace()
+        preds = model(imgs)
+        loss = criterion(preds, lbls)
+
+        losses.append(loss.item())
+        total += lbls.shape[0]
+        correct += (preds.argmax(dim=1) == lbls).sum().item()
+    avg_loss, avg_acc = np.mean(losses), correct / total
+    wandb.log({"epoch": epoch, "train_loss": avg_loss, "train_acc": avg_acc, "test_loss": avg_loss, "test_acc": avg_acc})
+    print(f"Epoch {epoch}: test loss {avg_loss:.3f} test acc {avg_acc:.3f}")
