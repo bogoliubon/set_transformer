@@ -43,8 +43,11 @@ class SetTransformer(nn.Module):
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--num_pts", type=int, default=10000)
-parser.add_argument("--learning_rate", type=float, default=1e-3)
 parser.add_argument("--batch_size", type=int, default=64)
+
+parser.add_argument("--learning_rate", type=float, default=1e-3)
+parser.add_argument("--lr_stepsize", type=int, default=10)
+parser.add_argument("--lr_gamma", type=float, default=0.9)
 
 parser.add_argument("--model", type=str, default='ST', help='options: ST, miniST')
 
@@ -55,6 +58,8 @@ parser.add_argument("--dim", type=int, default=256)
 parser.add_argument("--n_heads", type=int, default=4)
 parser.add_argument("--n_anc", type=int, default=16)
 parser.add_argument("--train_epochs", type=int, default=100)
+
+parser.add_argument("--saveprefix", type=str, default="miniset")
 
 parser.add_argument("--debug", action='store_true', default=False)
 args = parser.parse_args()
@@ -91,11 +96,20 @@ if not args.debug:
     wandb.init(project='pointcloud classification miniset', name=args.exp_name)
     wandb.log({'# of parameters': total_params})
 
+    os.makedirs(f'{args.saveprefix}',exist_ok=True)
+    os.makedirs(f'{args.saveprefix}/{args.exp_name}',exist_ok=True)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+if args.model != "ST":
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_stepsize, gamma=args.lr_gamma)
 criterion = nn.CrossEntropyLoss()
 model = nn.DataParallel(model)
 model = model.cuda()
 
+best_acc = 0.0
+best_loss = 50.
+
+import pdb; pdb.set_trace()
 for epoch in range(args.train_epochs):
     model.train()
     losses, total, correct = [], 0, 0
@@ -113,9 +127,15 @@ for epoch in range(args.train_epochs):
         total += lbls.shape[0]
         correct += (preds.argmax(dim=1) == lbls).sum().item()
 
-    avg_loss, avg_acc = np.mean(losses), correct / total
-    print(f"Epoch {epoch}: train loss {avg_loss:.3f} train acc {avg_acc:.3f}")
+    train_loss, train_acc = np.mean(losses), correct / total
+    print(f"Epoch {epoch}: train loss:{train_loss:.3f} train acc {train_acc:.3f}")
+    if args.model != "ST":
+        scheduler.step()
+        learningratearg = scheduler.get_last_lr()
+    else:
+        learningratearg = args.learning_rate
 
+    import pdb; pdb.set_trace()
 
     model.eval()
     losses, total, correct = [], 0, 0
@@ -129,6 +149,14 @@ for epoch in range(args.train_epochs):
         losses.append(loss.item())
         total += lbls.shape[0]
         correct += (preds.argmax(dim=1) == lbls).sum().item()
-    avg_loss, avg_acc = np.mean(losses), correct / total
-    wandb.log({"epoch": epoch, "train_loss": avg_loss, "train_acc": avg_acc, "test_loss": avg_loss, "test_acc": avg_acc})
-    print(f"Epoch {epoch}: test loss {avg_loss:.3f} test acc {avg_acc:.3f}")
+    val_loss, val_acc = np.mean(losses), correct / total
+
+    if not args.debug:
+        wandb.log({"epoch": epoch, "learningrate": learningratearg, "train_loss": train_loss, "train_acc": train_acc, "test_loss": val_loss, "test_acc": val_acc})
+        if best_acc < val_acc:
+            torch.save(model.module.state_dict(), f'{args.saveprefix}/{args.wandb_name}/bestacc_{model_name}.pth')
+            best_acc = val_acc
+        if best_loss_v > val_loss:
+            torch.save(model.module.state_dict(), f'{args.saveprefix}/{args.wandb_name}/bestloss_{model_name}.pth')
+            best_loss = val_loss
+    print(f"Epoch {epoch}: test loss {val_loss:.3f} test acc {val_acc:.3f}")
