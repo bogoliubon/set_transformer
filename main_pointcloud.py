@@ -61,6 +61,8 @@ parser.add_argument("--train_epochs", type=int, default=100)
 
 parser.add_argument("--saveprefix", type=str, default="miniset")
 
+parser.add_argument("--do_augmentation", action='store_true', default=False)
+
 parser.add_argument("--debug", action='store_true', default=False)
 args = parser.parse_args()
 # log_dir = "result/" + args.exp_name
@@ -73,7 +75,7 @@ generator = ModelFetcher(
     args.batch_size,
     down_sample=int(10000 / args.num_pts),
     do_standardize=True,
-    do_augmentation=(args.num_pts == 5000),
+    do_augmentation=args.do_augmentation,
 )
 
 if args.model == 'ST':  
@@ -83,7 +85,7 @@ if args.model == 'ST':
 elif args.model == 'miniST':
     model = SetTransformer_miniSAB(dim_input=3, set_size=args.num_pts , dim_output=40, dim_hidden=args.dim,
                                    num_heads=args.n_heads, p_outputs=1, miniset=args.miniset, minisettype=args.miniset_type, model_loaded=None, ln=True, flash=False)
-    args.exp_name = f"miniST_N{args.num_pts}_d{args.dim}h{args.n_heads}{args.miniset_type}mini{args.miniset}_lr{args.learning_rate}bs{args. batch_size}"
+    args.exp_name = f"miniST_N{args.num_pts}_d{args.dim}h{args.n_heads}{args.miniset_type}mini{args.miniset}_lr{args.learning_rate}step{args.lr_stepsize}gamma{args.lr_gamma}bs{args. batch_size}"
                                
 else:
     raise ValueError('model not implemented.')
@@ -109,7 +111,7 @@ model = model.cuda()
 best_acc = 0.0
 best_loss = 50.
 
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 for epoch in range(args.train_epochs):
     model.train()
     losses, total, correct = [], 0, 0
@@ -152,11 +154,11 @@ for epoch in range(args.train_epochs):
     val_loss, val_acc = np.mean(losses), correct / total
 
     if not args.debug:
-        wandb.log({"epoch": epoch, "learningrate": learningratearg, "train_loss": train_loss, "train_acc": train_acc, "test_loss": val_loss, "test_acc": val_acc})
+        wandb.log({"epoch": epoch, "learningrate": learningratearg[0], "train_loss": train_loss, "train_acc": train_acc, "test_loss": val_loss, "test_acc": val_acc})
         if best_acc < val_acc:
-            torch.save(model.module.state_dict(), f'{args.saveprefix}/{args.wandb_name}/bestacc_{model_name}.pth')
+            torch.save(model.module.state_dict(), f'{args.saveprefix}/bestacc_{args.exp_name}.pth')
             best_acc = val_acc
-        if best_loss_v > val_loss:
-            torch.save(model.module.state_dict(), f'{args.saveprefix}/{args.wandb_name}/bestloss_{model_name}.pth')
+        if best_loss > val_loss:
+            torch.save(model.module.state_dict(), f'{args.saveprefix}/bestloss_{args.exp_name}.pth')
             best_loss = val_loss
     print(f"Epoch {epoch}: test loss {val_loss:.3f} test acc {val_acc:.3f}")
