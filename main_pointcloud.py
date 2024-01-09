@@ -49,7 +49,7 @@ parser.add_argument("--learning_rate", type=float, default=1e-3)
 parser.add_argument("--lr_stepsize", type=int, default=10)
 parser.add_argument("--lr_gamma", type=float, default=0.9)
 
-parser.add_argument("--model", type=str, default='ST', help='options: ST, miniST')
+parser.add_argument("--model", type=str, default='ST', help='options: ST, miniST, miniST*')
 
 parser.add_argument("--miniset", type=int, default=2000)
 parser.add_argument("--miniset_type", type=str)
@@ -86,6 +86,11 @@ elif args.model == 'miniST':
     model = SetTransformer_miniSAB(dim_input=3, set_size=args.num_pts , dim_output=40, dim_hidden=args.dim,
                                    num_heads=args.n_heads, p_outputs=1, miniset=args.miniset, minisettype=args.miniset_type, model_loaded=None, ln=True, flash=False)
     args.exp_name = f"miniST_N{args.num_pts}_d{args.dim}h{args.n_heads}{args.miniset_type}mini{args.miniset}_lr{args.learning_rate}step{args.lr_stepsize}gamma{args.lr_gamma}bs{args. batch_size}"
+
+elif args.model == 'miniST*':
+    model = SetTransformer_miniSAB_new(dim_input=3, set_size=args.num_pts , dim_output=40, dim_hidden=args.dim,
+                                   num_heads=args.n_heads, p_outputs=1, miniset=args.miniset, minisettype=args.miniset_type, model_loaded=None, ln=True, flash=False)
+    args.exp_name = f"miniST*_N{args.num_pts}_d{args.dim}h{args.n_heads}{args.miniset_type}mini{args.miniset}_lr{args.learning_rate}step{args.lr_stepsize}gamma{args.lr_gamma}bs{args. batch_size}"
                                
 else:
     raise ValueError('model not implemented.')
@@ -93,6 +98,9 @@ else:
 # import pdb; pdb.set_trace()
 
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f'total params: {total_params}')
+
+# import pdb; pdb.set_trace()
 
 if not args.debug:
     wandb.init(project='pointcloud classification miniset', name=args.exp_name)
@@ -137,7 +145,7 @@ for epoch in range(args.train_epochs):
     else:
         learningratearg = args.learning_rate
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
     model.eval()
     losses, total, correct = [], 0, 0
