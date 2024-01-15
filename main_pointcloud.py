@@ -110,8 +110,10 @@ if not args.debug:
     os.makedirs(f'{args.saveprefix}/{args.exp_name}',exist_ok=True)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-if args.model != "ST":
+if args.lr_stepsize is not None:
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_stepsize, gamma=args.lr_gamma)
+else: 
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=1.)
 criterion = nn.CrossEntropyLoss()
 model = nn.DataParallel(model)
 model = model.cuda()
@@ -139,11 +141,8 @@ for epoch in range(args.train_epochs):
 
     train_loss, train_acc = np.mean(losses), correct / total
     print(f"Epoch {epoch}: train loss:{train_loss:.3f} train acc {train_acc:.3f}")
-    if args.model != "ST":
-        scheduler.step()
-        learningratearg = scheduler.get_last_lr()
-    else:
-        learningratearg = args.learning_rate
+    scheduler.step()
+    learningratearg = scheduler.get_last_lr()[0]
 
     # import pdb; pdb.set_trace()
 
@@ -161,12 +160,13 @@ for epoch in range(args.train_epochs):
         correct += (preds.argmax(dim=1) == lbls).sum().item()
     val_loss, val_acc = np.mean(losses), correct / total
 
-    if not args.debug:
-        wandb.log({"epoch": epoch, "learningrate": learningratearg[0], "train_loss": train_loss, "train_acc": train_acc, "test_loss": val_loss, "test_acc": val_acc})
-        if best_acc < val_acc:
-            torch.save(model.module.state_dict(), f'{args.saveprefix}/bestacc_{args.exp_name}.pth')
-            best_acc = val_acc
-        if best_loss > val_loss:
-            torch.save(model.module.state_dict(), f'{args.saveprefix}/bestloss_{args.exp_name}.pth')
-            best_loss = val_loss
+    wandb.log({"epoch": epoch, "learningrate": learningratearg, "train_loss": train_loss, "train_acc": train_acc, "test_loss": val_loss, "test_acc": val_acc})
+
+    if best_acc < val_acc:
+        torch.save(model.module.state_dict(), f'{args.saveprefix}/bestacc_{args.exp_name}.pth')
+        best_acc = val_acc
+    if best_loss > val_loss:
+        torch.save(model.module.state_dict(), f'{args.saveprefix}/bestloss_{args.exp_name}.pth')
+        best_loss = val_loss
+        
     print(f"Epoch {epoch}: test loss {val_loss:.3f} test acc {val_acc:.3f}")
